@@ -27,6 +27,10 @@
             position: sticky;
             top: 0;
             z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
         header h1 {
@@ -34,18 +38,42 @@
         }
 
         nav {
-            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
 
         nav a {
             color: white;
             text-decoration: none;
-            margin: 0 1rem;
             font-weight: bold;
         }
 
         nav a:hover {
             text-decoration: underline;
+        }
+
+        #wallet-connect {
+            background-color: #e9c46a;
+            color: #264653;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        #wallet-connect:hover {
+            background-color: #f4a261;
+        }
+
+        #wallet-status {
+            color: white;
+            font-size: 0.9rem;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* Hero Section */
@@ -112,12 +140,20 @@
 
         /* Mobile Responsiveness */
         @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
             header h1 {
                 font-size: 1.5rem;
             }
 
+            nav {
+                flex-direction: column;
+            }
+
             nav a {
-                display: block;
                 margin: 0.5rem 0;
             }
 
@@ -133,6 +169,16 @@
             .content h3 {
                 font-size: 1.5rem;
             }
+
+            #wallet-connect {
+                width: 100%;
+                text-align: center;
+            }
+
+            #wallet-status {
+                max-width: 100%;
+                text-align: center;
+            }
         }
     </style>
 </head>
@@ -145,6 +191,8 @@
             <a href="#about">About</a>
             <a href="#gallery">Gallery</a>
             <a href="#contact">Contact</a>
+            <button id="wallet-connect">Connect Wallet</button>
+            <span id="wallet-status">Not Connected</span>
         </nav>
     </header>
 
@@ -174,5 +222,138 @@
     <footer>
         <p>&copy; 2025 Player vs. Environment. All rights reserved.</p>
     </footer>
+
+    <!-- JavaScript for MetaMask Integration -->
+    <script>
+        const connectButton = document.getElementById('wallet-connect');
+        const walletStatus = document.getElementById('wallet-status');
+
+        // Optimism Network Configuration
+        const optimismNetwork = {
+            chainId: '0xa', // Chain ID 10 in hexadecimal
+            chainName: 'Optimism',
+            nativeCurrency: {
+                name: 'ETH',
+                symbol: 'ETH',
+                decimals: 18
+            },
+            rpcUrls: ['https://mainnet.optimism.io'],
+            blockExplorerUrls: ['https://optimistic.etherscan.io']
+        };
+
+        // Check if MetaMask is installed
+        async function checkMetaMask() {
+            if (typeof window.ethereum === 'undefined') {
+                walletStatus.textContent = 'MetaMask not installed';
+                alert('Please install MetaMask to connect your wallet.');
+                return false;
+            }
+            return true;
+        }
+
+        // Add or switch to Optimism network
+        async function addOptimismNetwork() {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: optimismNetwork.chainId }],
+                });
+            } catch (switchError) {
+                // If the network is not added, add it
+                if (switchError.code === 4902) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [optimismNetwork],
+                        });
+                    } catch (addError) {
+                        console.error('Error adding Optimism network:', addError);
+                        walletStatus.textContent = 'Failed to add Optimism';
+                        alert('Failed to add Optimism network. Please try again.');
+                    }
+                } else {
+                    console.error('Error switching to Optimism network:', switchError);
+                    walletStatus.textContent = 'Connection failed';
+                    alert('Failed to switch to Optimism network. Please try again.');
+                }
+            }
+        }
+
+        // Connect wallet and display address
+        async function connectWallet() {
+            if (!await checkMetaMask()) return;
+
+            try {
+                // Request account access
+                const accounts = await window.ethereum.request({
+                    method: 'eth_requestAccounts'
+                });
+                
+                // Add or switch to Optimism network
+                await addOptimismNetwork();
+
+                // Display shortened wallet address
+                const address = accounts[0];
+                walletStatus.textContent = `${address.slice(0, 6)}...${address.slice(-4)}`;
+                connectButton.textContent = 'Connected';
+                connectButton.disabled = true;
+            } catch (error) {
+                console.error('Error connecting wallet:', error);
+                walletStatus.textContent = 'Connection failed';
+                alert('Failed to connect wallet. Please try again.');
+            }
+        }
+
+        // Event listener for connect button
+        connectButton.addEventListener('click', connectWallet);
+
+        // Check if already connected on page load
+        window.addEventListener('load', async () => {
+            if (await checkMetaMask()) {
+                try {
+                    const accounts = await window.ethereum.request({
+                        method: 'eth_accounts'
+                    });
+                    if (accounts.length > 0) {
+                        // Check if already on Optimism network
+                        const chainId = await window.ethereum.request({
+                            method: 'eth_chainId'
+                        });
+                        if (chainId === optimismNetwork.chainId) {
+                            walletStatus.textContent = `${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`;
+                            connectButton.textContent = 'Connected';
+                            connectButton.disabled = true;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking wallet on load:', error);
+                }
+            }
+        });
+
+        // Handle account or network changes
+        window.ethereum?.on('accountsChanged', (accounts) => {
+            if (accounts.length > 0) {
+                walletStatus.textContent = `${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`;
+                connectButton.textContent = 'Connected';
+                connectButton.disabled = true;
+            } else {
+                walletStatus.textContent = 'Not Connected';
+                connectButton.textContent = 'Connect Wallet';
+                connectButton.disabled = false;
+            }
+        });
+
+        window.ethereum?.on('chainChanged', (chainId) => {
+            if (chainId === optimismNetwork.chainId) {
+                connectButton.textContent = 'Connected';
+                connectButton.disabled = true;
+            } else {
+                walletStatus.textContent = 'Wrong Network';
+                connectButton.textContent = 'Connect Wallet';
+                connectButton.disabled = false;
+            }
+        });
+    </script>
 </body>
 </html>
