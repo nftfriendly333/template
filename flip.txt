@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract CoinFlip is Ownable {
+    IERC20 public coopToken; // COOP token contract
+    uint256 public constant MIN_BET = 1 * 10**18; // 1 COOP (assuming 18 decimals)
+    uint256 public constant MAX_BET = 1000 * 10**18; // 1000 COOP
+
+    event CoinFlipped(address indexed player, uint256 betAmount, bool won, uint256 payout);
+
+    constructor(address _coopToken) Ownable(msg.sender) {
+        coopToken = IERC20(_coopToken);
+    }
+
+    // Function to flip the coin
+    function flipCoin(uint256 betAmount) external {
+        // Validate bet amount
+        require(betAmount >= MIN_BET, "Bet must be at least 1 COOP");
+        require(betAmount <= MAX_BET, "Bet must not exceed 1000 COOP");
+        require(coopToken.balanceOf(msg.sender) >= betAmount, "Insufficient COOP balance");
+        require(coopToken.allowance(msg.sender, address(this)) >= betAmount, "Insufficient allowance");
+
+        // Transfer bet amount to contract
+        require(coopToken.transferFrom(msg.sender, address(this), betAmount), "Token transfer failed");
+
+        // Generate pseudo-random result (heads or tails)
+        bool won = _getRandomResult();
+
+        // Calculate payout (double the bet if won, else 0)
+        uint256 payout = won ? betAmount * 2 : 0;
+
+        // If won, transfer payout to player
+        if (won) {
+            require(coopToken.balanceOf(address(this)) >= payout, "Contract has insufficient funds");
+            require(coopToken.transfer(msg.sender, payout), "Payout transfer failed");
+        }
+
+        emit CoinFlipped(msg.sender, betAmount, won, payout);
+    }
+
+    // Pseudo-random number generator for coin flip (50/50)
+    function _getRandomResult() private view returns (bool) {
+        uint256 random = uint256(
+            keccak256(
+                abi.encodePacked(block.timestamp, block.prevrandao, msg.sender)
+            )
+        );
+        return (random % 2) == 0; // 0 for heads, 1 for tails
+    }
+
+    // Owner can deposit COOP tokens to fund payouts
+    function depositTokens(uint256 amount) external onlyOwner {
+        require(coopToken.transferFrom(msg.sender, address(this), amount), "Deposit failed");
+    }
+
+    // Owner can withdraw COOP tokens (emergency use)
+    function withdrawTokens(uint256 amount) external onlyOwner {
+        require(coopToken.transfer(msg.sender, amount), "Withdrawal failed");
+    }
+
+    // Get contract's COOP balance
+    function getContractBalance() external view returns (uint256) {
+        return coopToken.balanceOf(address(this));
+    }
+}
